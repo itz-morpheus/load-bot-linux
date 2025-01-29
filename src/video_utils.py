@@ -2,17 +2,19 @@
 # pylint: disable=missing-function-docstring
 
 import os
+import shutil
 import subprocess
 import tempfile
 from dotenv import load_dotenv
-from logger import print_logs
+from logger import debug, error
 
 load_dotenv()
+
 
 def compress_video(input_path):
     """
     Compress video for 50MB with use of FFmpeg.
-    
+
     Parameters:
         input_path (str): Path to original video.
     """
@@ -29,24 +31,31 @@ def compress_video(input_path):
 
     command = [
         "ffmpeg",
-        "-i", input_path,
-        "-b:v", f"{target_bitrate_kbps}k",
-        "-vf", "scale=-2:720",
-        "-c:v", "libx264",     
-        "-preset", "fast",      
-        "-c:a", "aac",         
-        "-b:a", "128k",         
-        "-y",                   
-        temp_output
+        "-i",
+        input_path,
+        "-b:v",
+        f"{target_bitrate_kbps}k",
+        "-vf",
+        "scale=-2:720",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-y",
+        temp_output,
     ]
 
     try:
         subprocess.run(command, check=True)
         if os.path.exists(temp_output):
             os.replace(temp_output, input_path)
-            print(f"Compressed done. File saved: {input_path}")
+            debug("Compressed done. File saved: %s", input_path)
     except subprocess.CalledProcessError as e:
-        print(f"Error while compressing: {e}")
+        error("Error while compressing: %s", e)
 
 
 def get_video_duration(video_path):
@@ -55,16 +64,19 @@ def get_video_duration(video_path):
     """
     command = [
         "ffprobe",
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        video_path
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        video_path,
     ]
     try:
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
         return float(result.stdout.strip())
-    except Exception as e:
-        print(f"Error getting video duration: {e}")
+    except (subprocess.CalledProcessError, ValueError) as e:
+        error("Error getting video duration: %s", e)
         return None
 
 
@@ -89,9 +101,11 @@ def download_video(url):
     temp_dir = tempfile.mkdtemp()
     command = [
         "yt-dlp",  # Assuming yt-dlp is installed and in the PATH
-        "-S", "vcodec:h264,fps,res,acodec:m4a",
+        "-S",
+        "vcodec:h264,fps,res,acodec:m4a",
         url,
-        "-o", os.path.join(temp_dir, "%(id)s.%(ext)s")
+        "-o",
+        os.path.join(temp_dir, "%(id)s.%(ext)s"),
     ]
 
     try:
@@ -101,13 +115,13 @@ def download_video(url):
                 return os.path.join(temp_dir, filename)
         return None
     except subprocess.CalledProcessError as e:
-        print_logs(f"Error downloading video: {e}")
+        error("Error downloading video: %s", e)
         return None
     except subprocess.TimeoutExpired as e:
-        print_logs(f"Download process timed out: {e}")
+        error("Download process timed out: %s", e)
         return None
-    except Exception as e:
-        print_logs(f"An unexpected error occurred: {e}")
+    except (OSError, IOError) as e:
+        error("File system error occurred: %s", e)
         return None
 
 
@@ -115,7 +129,7 @@ def cleanup_file(video_path):
     """
     Deletes a video file and its containing directory.
 
-    This function attempts to remove the specified video file and 
+    This function attempts to remove the specified video file and
     its parent directory. Logs are printed if debugging is enabled.
 
     Parameters:
@@ -124,10 +138,9 @@ def cleanup_file(video_path):
     Logs:
         Logs messages about the deletion process or any errors encountered.
     """
-    print_logs(f"Video to delete {video_path}")
+    debug("Video to delete %s", video_path)
     try:
-        os.remove(video_path)
-        os.rmdir(os.path.dirname(video_path))
-        print_logs(f"Video deleted {video_path}")
-    except Exception as cleanup_error:
-        print_logs(f"Error deleting file: {cleanup_error}")
+        shutil.rmtree(os.path.dirname(video_path))
+        debug("Video deleted %s", video_path)
+    except (OSError, IOError) as cleanup_error:
+        error("Error deleting file: %s", cleanup_error)
